@@ -1,0 +1,186 @@
+package com.wu.cartservice.service;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.wu.cartservice.dto.CartDto;
+import com.wu.cartservice.dto.CartDtoResponse;
+import com.wu.cartservice.dto.DeleteProductDto;
+import com.wu.cartservice.dto.UsersCartDtoResponse;
+import com.wu.cartservice.entity.Cart;
+import com.wu.cartservice.entity.Product;
+import com.wu.cartservice.entity.UsersCart;
+import com.wu.cartservice.repository.CartRepository;
+import com.wu.cartservice.repository.ProductRepository;
+import com.wu.cartservice.repository.UsersCartRepository;
+import com.wu.cartservice.repository.UsersRepository;
+
+import jakarta.ws.rs.BadRequestException;
+import lombok.extern.slf4j.Slf4j;
+
+@Service
+@Slf4j
+public class CartServiceImpl implements CartService {
+
+	@Autowired
+	private UsersCartRepository usersCartRepo;
+
+	@Autowired
+	private CartRepository cartRepo;
+
+	@Autowired
+	private UsersRepository usersRepo;
+
+	@Autowired
+	private ProductRepository prodRepos;
+
+	public UsersCartDtoResponse createCart(String username) {
+		log.info("Inside  createCart of Cartserviceimpl");
+		Optional<UsersCart> existingCart = usersCartRepo.findByUsername(username);
+		UsersCartDtoResponse cartResponse = new UsersCartDtoResponse();
+		if (existingCart.isEmpty()) {
+			UsersCart usersCart = new UsersCart();
+			usersCart.setUsername(username);
+			usersCartRepo.save(usersCart);
+			cartResponse.setCartId(usersCart.getCartId());
+		} else
+			cartResponse.setCartId(existingCart.get().getCartId());
+		return cartResponse;
+
+	}
+
+//	@Override
+//	public CartDtoResponse addProductToCart(CartDto cartDto) {
+//		log.info("Inside  addProductToCart of Cartserviceimpl");
+//
+//		if (!usersRepo.existsByUsername(cartDto.getUsername())) {
+//			throw new RuntimeException("Username is not present in the DB!!");
+//		}
+//
+//		UsersCartDtoResponse cartDtoResponse = createCart(cartDto.getUsername());
+//
+//		Cart cart = new Cart();
+//
+//		// New logic for Product and quantity
+//		// check for already added product
+//		// check for username present in users repo --done
+//		UsersCart usersCart = usersCartRepo.findById(cartDtoResponse.getCartId())
+//				.orElseThrow(() -> new RuntimeException("cart not found"));
+//
+//		cart.setUsersCart(usersCart);
+//		cart.setPrice(cartDto.getPrice());
+//		cart.setProductId(cartDto.getProductId());
+//		cart.setProductName(cartDto.getProductName());
+//		cart.setQuantity(cartDto.getQuantity());
+//
+//		Cart save = cartRepo.save(cart);
+//
+//		log.info("products added");
+//		double totalPrice = usersCart.getTotalPrice() + (cartDto.getPrice() * cartDto.getQuantity());
+//		usersCart.setTotalPrice(totalPrice);
+//		usersCartRepo.save(usersCart);
+//		log.info("Total Price calculated");
+//		CartDtoResponse cartResponse = new CartDtoResponse();
+//		cartResponse.setMessage("Product Added to the Cart!!");
+//		cartResponse.setCartId(cartDtoResponse.getCartId());
+//		cartResponse.setUsername(cartDto.getUsername());
+//		cartResponse.setProductId(cart.getProductId());
+//		cartResponse.setProductName(cartDto.getProductName());
+//		cartResponse.setQuantity(cart.getQuantity());
+//		cartResponse.setPrice(cart.getPrice());
+//		cartResponse.setTotalCartPrice(totalPrice);
+//		log.info("returning response");
+//		return cartResponse;
+//	}
+
+	@Override
+	public CartDtoResponse addProductToCart(CartDto cartDto) {
+		log.info("Inside  addProductToCart of Cartserviceimpl");
+
+		if (!usersRepo.existsByUsername(cartDto.getUsername())) {
+			throw new RuntimeException("Username is not present in the DB!!");
+		}
+
+		UsersCartDtoResponse cartDtoResponse = createCart(cartDto.getUsername());
+
+		UsersCart usersCart = usersCartRepo.findById(cartDtoResponse.getCartId())
+				.orElseThrow(() -> new RuntimeException("cart not found"));
+
+		Product findProductByNamePriceAndQuantity = prodRepos
+				.findProductByNamePriceAndQuantity(cartDto.getProductName(), cartDto.getPrice(), cartDto.getQuantity());
+		CartDtoResponse cartResponse = new CartDtoResponse();
+
+		Cart cart = cartRepo.findByProductName(cartDto.getProductName());
+
+		if (findProductByNamePriceAndQuantity == null) {
+			cartResponse.setMessage("OUT of STOCK");
+			return cartResponse;
+		}
+
+		if (cart == null && findProductByNamePriceAndQuantity != null) {
+			cart = new Cart();
+			cart.setUsersCart(usersCart);
+			if ((findProductByNamePriceAndQuantity.getStockQuantity().compareTo(cartDto.getQuantity()) >= 0)) {
+				cart.setPrice(cartDto.getPrice());
+				cart.setProductId(cartDto.getProductId());
+				cart.setProductName(cartDto.getProductName());
+				cart.setQuantity(cartDto.getQuantity());
+				cartRepo.save(cart);
+				BigDecimal totalPrice = usersCart.getTotalPrice()
+						.add(cartDto.getPrice().multiply(new BigDecimal(cartDto.getQuantity())));
+				usersCart.setTotalPrice(totalPrice);
+				usersCartRepo.save(usersCart);
+				cartResponse.setMessage("Product Added to the Cart!!");
+				cartResponse.setCartId(cartDtoResponse.getCartId());
+				cartResponse.setUsername(cartDto.getUsername());
+				cartResponse.setProductId(cart.getProductId());
+				cartResponse.setProductName(cartDto.getProductName());
+				cartResponse.setQuantity(cart.getQuantity());
+				cartResponse.setPrice(cart.getPrice());
+				cartResponse.setTotalCartPrice(totalPrice);
+				log.info("returning response");
+
+			}
+			return cartResponse;
+		}
+	}
+
+	@Override
+	public void deleteCart(Long cartId) {
+
+		log.info("Inside  deleteCart of Cartserviceimpl");
+		UsersCart usersCart = usersCartRepo.findById(cartId).orElseThrow(() -> new RuntimeException("Cart not found"));
+		// Delete associated products or update their references
+		usersCartRepo.deleteById(cartId);
+
+	}
+
+	@Override
+	public List<Cart> getAllProductsByCartId(Long cartId) {
+		usersCartRepo.findById(cartId).orElseThrow(() -> new RuntimeException("cart not found"));
+		log.info("Inside  getAllProductsByCartId of Cartserviceimpl");
+		List<Cart> productList = cartRepo.findAllCartByUsersCart_cartId(cartId);
+		return productList;
+	}
+
+	@Override
+	public void deleteProduct(DeleteProductDto deleteProductDto) {
+		log.info("Inside  deleteProduct of Cartserviceimpl");
+
+		Cart cart = cartRepo.findById(deleteProductDto.getProductId())
+				.orElseThrow(() -> new RuntimeException("Product not found"));
+		UsersCart usersCart = usersCartRepo.findById(deleteProductDto.getCartId())
+				.orElseThrow(() -> new RuntimeException("cart not found"));
+		cartRepo.deleteById(deleteProductDto.getProductId());
+
+		double totalPrice = usersCart.getTotalPrice() - (cart.getPrice() * cart.getQuantity());
+		usersCart.setTotalPrice(totalPrice);
+		usersCartRepo.save(usersCart);
+		log.info("DeletedProduct and calculated Total Price  of Cartserviceimpl");
+
+	}
+}

@@ -1,0 +1,49 @@
+#spring.cloud.gateway.discovery.locator.enabled=true
+#spring.cloud.gateway.discovery.locator.lowerCaseServiceId=true
+#  cloud:
+#    gateway:
+#      discovery:
+#        locator:
+#          enabled: true
+#          lower-case-service-id: true
+
+server:
+  port: 8765
+  
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:          
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+          - Path=/auth/**,/registration/**
+          filters:
+            - AuthenticationFilter
+            
+        - id: login-service
+          uri: lb://login-service
+          predicates:
+          - Path=/login/**
+          
+        - id: product-service
+          uri: lb://product-service
+          predicates:
+          - Path=/product/**
+          filters:
+            - AuthenticationFilter
+          
+          
+          
+        
+
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    registerWithEureka: true
+    fetchRegistry: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka
